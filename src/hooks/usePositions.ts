@@ -1,10 +1,9 @@
-import { useReadContract, useReadContracts, usePublicClient } from "wagmi";
+import { useReadContract, useReadContracts } from "wagmi";
 import { POSITION_MANAGER_ABI } from "../abi/NonfungiblePositionManager";
 import { ERC20_ABI } from "../abi/ERC20";
 import { POSITION_MANAGER_ADDRESS, WAVAX_ADDRESS } from "../config/contracts";
 import { getTokenInfo } from "../config/tokenlist";
-import { formatUnits, encodeFunctionData, decodeFunctionResult } from "viem";
-import { useEffect, useState } from "react";
+import { formatUnits } from "viem";
 
 export interface PositionData {
   tokenId: bigint;
@@ -22,8 +21,7 @@ export interface PositionData {
   token1Decimals: number;
   token0Name: string;
   token1Name: string;
-  totalReward: bigint;
-  claimableReward: bigint;
+  hasRewards: boolean;
 }
 
 export function usePositionCount(address: `0x${string}` | undefined) {
@@ -109,7 +107,6 @@ export function useTokenMetadata(addresses: string[]) {
 }
 
 export function useAllPositions(address: `0x${string}` | undefined) {
-  const publicClient = usePublicClient();
   const { data: balanceData, isLoading: balanceLoading } =
     usePositionCount(address);
   const count = balanceData ? Number(balanceData) : 0;
@@ -128,56 +125,6 @@ export function useAllPositions(address: `0x${string}` | undefined) {
 
   const { data: rewardsData, isLoading: rewardsLoading } =
     usePositionRewards(tokenIds);
-
-  // Simulate claimReward via eth_call to get accurate claimable amounts
-  const [simulatedRewards, setSimulatedRewards] = useState<Map<string, bigint>>(
-    new Map()
-  );
-
-  useEffect(() => {
-    if (!publicClient || !address || !rewardsData || tokenIds.length === 0) return;
-
-    const simulate = async () => {
-      const results = new Map<string, bigint>();
-
-      for (let i = 0; i < tokenIds.length; i++) {
-        if (!rewardsData[i] || rewardsData[i].status !== "success") continue;
-        const rewardResult = rewardsData[i].result as unknown as [
-          bigint, number, number, bigint
-        ];
-        if ((rewardResult[3] as bigint) === 0n) continue;
-
-        try {
-          const calldata = encodeFunctionData({
-            abi: POSITION_MANAGER_ABI,
-            functionName: "claimReward",
-            args: [tokenIds[i], address],
-          });
-
-          const rawResult = await publicClient.call({
-            to: POSITION_MANAGER_ADDRESS,
-            data: calldata,
-            account: address,
-          });
-
-          if (rawResult.data) {
-            const decoded = decodeFunctionResult({
-              abi: POSITION_MANAGER_ABI,
-              functionName: "claimReward",
-              data: rawResult.data,
-            });
-            results.set(tokenIds[i].toString(), decoded as bigint);
-          }
-        } catch (e) {
-          console.warn(`claimReward simulation failed for token ${tokenIds[i]}:`, e);
-        }
-      }
-
-      setSimulatedRewards(results);
-    };
-
-    simulate();
-  }, [publicClient, address, tokenIds.length, rewardsData]);
 
   const allTokenAddresses: string[] = [];
   if (positionsData) {
@@ -254,17 +201,13 @@ export function useAllPositions(address: `0x${string}` | undefined) {
         name: "Unknown",
       };
 
-      let totalReward = 0n;
+      let hasRewards = false;
       if (rewardsData && rewardsData[i]?.status === "success") {
         const rewardResult = rewardsData[i].result as unknown as [
           bigint, number, number, bigint
         ];
-        totalReward = rewardResult[3] as bigint;
+        hasRewards = (rewardResult[3] as bigint) > 0n;
       }
-
-      // Use simulated claimReward result if available, otherwise fall back to totalReward
-      const simulated = simulatedRewards.get(tokenIds[i].toString());
-      const claimableReward = simulated ?? totalReward;
 
       positions.push({
         tokenId: tokenIds[i],
@@ -282,8 +225,7 @@ export function useAllPositions(address: `0x${string}` | undefined) {
         token1Decimals: meta1.decimals,
         token0Name: meta0.name,
         token1Name: meta1.name,
-        totalReward,
-        claimableReward,
+        hasRewards,
       });
     }
   }
@@ -300,16 +242,6 @@ export function formatTokenAmount(
   decimals: number
 ): string {
   const formatted = formatUnits(amount, decimals);
-  const num = parseFloat(formatted);
-  if (num === 0) return "0";
-  if (num < 0.0001) return "<0.0001";
-  if (num < 1) return num.toFixed(6);
-  if (num < 1000) return num.toFixed(4);
-  return num.toLocaleString("en-US", { maximumFractionDigits: 2 });
-}
-
-export function formatRewardAmount(amount: bigint): string {
-  const formatted = formatUnits(amount, 18);
   const num = parseFloat(formatted);
   if (num === 0) return "0";
   if (num < 0.0001) return "<0.0001";

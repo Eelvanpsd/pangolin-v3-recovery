@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useAccount } from "wagmi";
 import type { PositionData } from "../hooks/usePositions";
-import { formatTokenAmount, formatRewardAmount, isWAVAX } from "../hooks/usePositions";
+import { formatTokenAmount, isWAVAX } from "../hooks/usePositions";
 import { useRemoveLiquidity } from "../hooks/useRemoveLiquidity";
 import { getTokenInfo } from "../config/tokenlist";
 
@@ -29,7 +29,7 @@ export function PositionCard({ position }: PositionCardProps) {
   const hasLiquidity = position.liquidity > 0n;
   const hasUncollected =
     position.tokensOwed0 > 0n || position.tokensOwed1 > 0n;
-  const hasRewards = position.claimableReward > 0n;
+  const hasRewards = position.hasRewards;
   const containsWAVAX =
     isWAVAX(position.token0) || isWAVAX(position.token1);
   const [unwrapAVAX, setUnwrapAVAX] = useState(containsWAVAX);
@@ -148,9 +148,7 @@ export function PositionCard({ position }: PositionCardProps) {
         {hasRewards && (
           <div className="detail-row rewards">
             <span className="detail-label">Pending Rewards</span>
-            <div className="detail-value">
-              {formatRewardAmount(position.claimableReward)} PNG
-            </div>
+            <div className="detail-value">PNG available</div>
           </div>
         )}
       </div>
@@ -210,7 +208,7 @@ export function PositionCard({ position }: PositionCardProps) {
               ? "Confirm in Wallet..."
               : isConfirming
               ? "Claiming..."
-              : `Claim ${formatRewardAmount(position.claimableReward)} PNG`}
+              : "Claim PNG Rewards"}
           </button>
         )}
         {hasLiquidity && (

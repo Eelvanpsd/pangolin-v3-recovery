@@ -77,7 +77,7 @@ export function PositionList() {
       p.liquidity === 0n &&
       p.tokensOwed0 === 0n &&
       p.tokensOwed1 === 0n &&
-      p.totalReward === 0n
+      !p.hasRewards
   );
 
   return (
@@ -96,9 +96,9 @@ export function PositionList() {
               <strong>{closedPositions.length}</strong> With Uncollected Fees
             </span>
           )}
-          {positions.filter((p) => p.totalReward > 0n).length > 0 && (
+          {positions.filter((p) => p.hasRewards).length > 0 && (
             <span className="stat rewards-stat">
-              <strong>{positions.filter((p) => p.totalReward > 0n).length}</strong> With Rewards
+              <strong>{positions.filter((p) => p.hasRewards).length}</strong> With Rewards
             </span>
           )}
         </div>
