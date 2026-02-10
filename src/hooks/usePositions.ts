@@ -3,7 +3,7 @@ import { POSITION_MANAGER_ABI } from "../abi/NonfungiblePositionManager";
 import { ERC20_ABI } from "../abi/ERC20";
 import { POSITION_MANAGER_ADDRESS, WAVAX_ADDRESS } from "../config/contracts";
 import { getTokenInfo } from "../config/tokenlist";
-import { formatUnits } from "viem";
+import { formatUnits, encodeFunctionData, decodeFunctionResult } from "viem";
 import { useEffect, useState } from "react";
 
 export interface PositionData {
@@ -129,7 +129,7 @@ export function useAllPositions(address: `0x${string}` | undefined) {
   const { data: rewardsData, isLoading: rewardsLoading } =
     usePositionRewards(tokenIds);
 
-  // Simulate claimReward to get accurate claimable amounts
+  // Simulate claimReward via eth_call to get accurate claimable amounts
   const [simulatedRewards, setSimulatedRewards] = useState<Map<string, bigint>>(
     new Map()
   );
@@ -141,7 +141,6 @@ export function useAllPositions(address: `0x${string}` | undefined) {
       const results = new Map<string, bigint>();
 
       for (let i = 0; i < tokenIds.length; i++) {
-        // Only simulate for positions that have rewards according to positionReward
         if (!rewardsData[i] || rewardsData[i].status !== "success") continue;
         const rewardResult = rewardsData[i].result as unknown as [
           bigint, number, number, bigint
@@ -149,16 +148,28 @@ export function useAllPositions(address: `0x${string}` | undefined) {
         if ((rewardResult[3] as bigint) === 0n) continue;
 
         try {
-          const result = await publicClient.simulateContract({
-            address: POSITION_MANAGER_ADDRESS,
+          const calldata = encodeFunctionData({
             abi: POSITION_MANAGER_ABI,
             functionName: "claimReward",
             args: [tokenIds[i], address],
+          });
+
+          const rawResult = await publicClient.call({
+            to: POSITION_MANAGER_ADDRESS,
+            data: calldata,
             account: address,
           });
-          results.set(tokenIds[i].toString(), result.result as bigint);
-        } catch {
-          // If simulation fails, we'll fall back to positionReward totalReward
+
+          if (rawResult.data) {
+            const decoded = decodeFunctionResult({
+              abi: POSITION_MANAGER_ABI,
+              functionName: "claimReward",
+              data: rawResult.data,
+            });
+            results.set(tokenIds[i].toString(), decoded as bigint);
+          }
+        } catch (e) {
+          console.warn(`claimReward simulation failed for token ${tokenIds[i]}:`, e);
         }
       }
 
